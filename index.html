@@ -3,23 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Hand Tracking Particles</title>
+    <title>Interactive Particle System</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body { overflow: hidden; background: #000; font-family: Arial, sans-serif; }
-        #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; 
-                  display: flex; flex-direction: column; justify-content: center; align-items: center; 
-                  color: white; z-index: 1000; }
-        .spinner { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid #00ff00; 
-                  border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #loading-text { text-align: center; padding: 0 20px; }
-        #loading-text h2 { color: #00ff00; margin-bottom: 10px; }
-        #loading-progress { width: 80%; height: 4px; background: #333; margin: 15px 0; border-radius: 2px; overflow: hidden; }
-        #loading-bar { height: 100%; background: #00ff00; width: 0%; transition: width 0.3s; }
-        #container, #webcam, #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #webcam { object-fit: cover; transform: scaleX(-1); }
+        #container, #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         #overlay { z-index: 10; }
         #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
                    background: rgba(0,0,0,0.7); padding: 10px; border-radius: 20px;
@@ -31,26 +20,28 @@
         #status { position: absolute; top: 10px; left: 10px; color: white;
                  background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 15px;
                  font-size: 12px; z-index: 100; }
-        #retry-btn { background: #00ff00; color: black; border: none; padding: 10px 20px; 
-                    border-radius: 20px; margin-top: 15px; cursor: pointer; font-weight: bold; }
+        #instructions { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                       color: white; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 15px;
+                       text-align: center; z-index: 200; max-width: 90%; }
+        #instructions h3 { color: #00ff00; margin-bottom: 15px; }
+        #instructions p { margin: 8px 0; font-size: 14px; line-height: 1.4; }
+        #close-instructions { background: #00ff00; color: black; border: none; padding: 10px 20px;
+                             border-radius: 20px; margin-top: 15px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div id="loading">
-        <div class="spinner"></div>
-        <div id="loading-text">
-            <h2>Loading Hand Tracking...</h2>
-            <p>Downloading AI models (10-15MB)</p>
-            <p>Please be patient on first load</p>
-            <div id="loading-progress"><div id="loading-bar"></div></div>
-            <p id="loading-status">Initializing...</p>
-        </div>
-    </div>
-
     <div id="container">
-        <video id="webcam" autoplay playsinline></video>
         <div id="overlay"></div>
-        <div id="status">Initializing...</div>
+        <div id="status">Touch screen to control particles</div>
+        
+        <div id="instructions">
+            <h3>Interactive Particle System</h3>
+            <p>• Touch and drag to rotate particles</p>
+            <p>• Pinch with two fingers to resize</p>
+            <p>• Tap buttons below to change shapes</p>
+            <p>• Double-tap for color explosion</p>
+            <button id="close-instructions">START INTERACTING</button>
+        </div>
         
         <div id="controls">
             <button class="btn active" data-template="default">●</button>
@@ -62,335 +53,339 @@
     </div>
 
     <script>
-        // Manual MediaPipe implementation to avoid CDN issues
-        (function() {
-            // Create script loader function
-            function loadScript(src, callback) {
-                const script = document.createElement('script');
-                script.src = src;
-                script.onload = callback;
-                script.onerror = () => {
-                    console.error('Failed to load:', src);
-                    callback(new Error('Failed to load script'));
-                };
-                document.head.appendChild(script);
-            }
-            
-            // Load MediaPipe libraries in sequence
-            loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js', () => {
-                loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1620248257/camera_utils.js', () => {
-                    // Both libraries loaded, initialize app
-                    document.getElementById('loading-status').textContent = 'Libraries loaded, starting app...';
-                    setTimeout(() => {
-                        try {
-                            new HandParticleApp();
-                        } catch(error) {
-                            console.error('App initialization error:', error);
-                            showRetryButton();
-                        }
-                    }, 500);
-                });
-            });
-        })();
-        
-        function showRetryButton() {
-            document.getElementById('loading-text').innerHTML = `
-                <h2>Load Failed</h2>
-                <p>MediaPipe libraries didn't load properly</p>
-                <button id="retry-btn">Retry Loading</button>
-            `;
-            document.getElementById('retry-btn').addEventListener('click', () => {
-                location.reload();
-            });
-        }
-
-        class HandParticleApp {
+        class ParticleSystem {
             constructor() {
-                // Check if required libraries are available
-                if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
-                    throw new Error('MediaPipe libraries not loaded');
-                }
-                
-                // Initialize core properties
-                this.scene = null;
-                this.camera = null;
-                this.renderer = null;
-                this.particles = null;
-                this.particleCount = 800;
-                this.template = 'default';
-                this.scale = 1;
-                this.hue = 0;
-                
-                // Setup all components
-                this.setupScene();
-                this.setupParticles();
-                this.setupHandTracking();
-                this.setupEvents();
-                this.animate();
-                
-                // Hide loading screen
-                document.getElementById('loading').style.display = 'none';
-            }
-            
-            setupScene() {
-                // Create Three.js scene
+                // Initialize Three.js
                 this.scene = new THREE.Scene();
-                this.scene.background = new THREE.Color(0x000011);
+                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+                this.camera.position.z = 10;
                 
-                // Create camera
-                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
-                this.camera.position.z = 8;
-                
-                // Create renderer
                 this.renderer = new THREE.WebGLRenderer({ 
-                    antialias: false, 
-                    powerPreference: "low-power",
-                    alpha: true
+                    antialias: false,
+                    powerPreference: "low-power"
                 });
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.2));
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
                 document.getElementById('overlay').appendChild(this.renderer.domElement);
+                
+                // Particle system properties
+                this.particleCount = 1000;
+                this.currentTemplate = 'default';
+                this.scale = 1;
+                this.rotationX = 0;
+                this.rotationY = 0;
+                this.autoRotate = true;
+                this.hue = 0;
+                
+                // Touch tracking
+                this.touchStartDistance = 0;
+                this.isDragging = false;
+                this.lastTouchX = 0;
+                this.lastTouchY = 0;
+                
+                // Setup everything
+                this.setupParticles();
+                this.setupEventListeners();
+                this.animate();
             }
             
             setupParticles() {
-                // Create particle geometry
+                // Create geometry
                 const geometry = new THREE.BufferGeometry();
                 
-                // Create arrays for particle data
+                // Create attribute arrays
                 const positions = new Float32Array(this.particleCount * 3);
                 const colors = new Float32Array(this.particleCount * 3);
                 const sizes = new Float32Array(this.particleCount);
                 
-                // Initialize particle positions (sphere distribution)
+                // Initialize particles in sphere formation
                 for(let i = 0; i < this.particleCount; i++) {
                     const i3 = i * 3;
                     
-                    // Sphere distribution for better performance
+                    // Sphere distribution
                     const theta = Math.random() * Math.PI * 2;
                     const phi = Math.acos(2 * Math.random() - 1);
-                    const radius = 2;
+                    const radius = 3;
                     
                     positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
                     positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
                     positions[i3 + 2] = radius * Math.cos(phi);
                     
-                    // Default colors (blue-ish)
-                    colors[i3] = 0.5;
-                    colors[i3 + 1] = 0.7;
+                    // Default blue-ish colors
+                    colors[i3] = 0.3;
+                    colors[i3 + 1] = 0.6;
                     colors[i3 + 2] = 1.0;
                     
                     // Random sizes
-                    sizes[i] = Math.random() * 1.5 + 0.5;
+                    sizes[i] = Math.random() * 1.2 + 0.5;
                 }
                 
-                // Set geometry attributes
+                // Set attributes
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
                 
                 // Create material
                 const material = new THREE.PointsMaterial({
-                    size: 0.15,
+                    size: 0.1,
                     vertexColors: true,
                     transparent: true,
-                    opacity: 0.85,
+                    opacity: 0.8,
                     blending: THREE.AdditiveBlending
                 });
                 
                 // Create particle system
-                this.particles = new THREE.Points(geometry, material);
-                this.scene.add(this.particles);
+                this.particleSystem = new THREE.Points(geometry, material);
+                this.scene.add(this.particleSystem);
+                
+                // Store references to attributes for updates
+                this.positions = positions;
+                this.colors = colors;
+                this.sizes = sizes;
+                this.geometry = geometry;
             }
             
-            setupHandTracking() {
-                // Get video element
-                const video = document.getElementById('webcam');
+            setupEventListeners() {
+                const canvas = this.renderer.domElement;
                 
-                // Initialize MediaPipe Hands
-                const hands = new Hands({
-                    locateFile: (file) => {
-                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
+                // Touch events for mobile
+                canvas.addEventListener('touchstart', (e) => this.onTouchStart(e), false);
+                canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), false);
+                canvas.addEventListener('touchend', (e) => this.onTouchEnd(e), false);
+                
+                // Mouse events for desktop testing
+                canvas.addEventListener('mousedown', (e) => this.onMouseDown(e), false);
+                canvas.addEventListener('mousemove', (e) => this.onMouseMove(e), false);
+                canvas.addEventListener('mouseup', (e) => this.onMouseUp(e), false);
+                
+                // Double tap/click for effects
+                let lastTap = 0;
+                canvas.addEventListener('touchend', (e) => {
+                    const currentTime = new Date().getTime();
+                    const tapLength = currentTime - lastTap;
+                    if (tapLength < 300 && tapLength > 0) {
+                        this.explodeColors();
+                        e.preventDefault();
                     }
+                    lastTap = currentTime;
                 });
                 
-                // Configure hand tracking options
-                hands.setOptions({
-                    maxNumHands: 1,           // Only track one hand for performance
-                    modelComplexity: 0,       // Use lighter model
-                    minDetectionConfidence: 0.7,
-                    minTrackingConfidence: 0.7
+                // Double click for desktop
+                canvas.addEventListener('dblclick', () => {
+                    this.explodeColors();
                 });
                 
-                // Handle results
-                hands.onResults((results) => {
-                    if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                        // Get landmarks
-                        const landmarks = results.multiHandLandmarks[0];
-                        
-                        // Get thumb and index finger positions
-                        const thumbTip = landmarks[4];  // Thumb tip
-                        const indexTip = landmarks[8];  // Index finger tip
-                        
-                        // Calculate distance between thumb and index (pinch gesture)
-                        const dx = thumbTip.x - indexTip.x;
-                        const dy = thumbTip.y - indexTip.y;
-                        const distance = Math.sqrt(dx * dx + dy * dy);
-                        
-                        // Update scale based on pinch distance
-                        this.scale = 0.5 + (distance * 5);  // Range: 0.5 to ~3
-                        
-                        // Update hue based on thumb position
-                        this.hue = thumbTip.x;
-                        
-                        // Update status
-                        document.getElementById('status').textContent = 'Hand detected ✓';
-                    } else {
-                        // No hand detected
-                        document.getElementById('status').textContent = 'Show hand to camera';
-                    }
-                });
-                
-                // Setup camera with error handling
-                try {
-                    const camera = new Camera(video, {
-                        onFrame: async () => {
-                            try {
-                                await hands.send({ image: video });
-                            } catch(error) {
-                                console.error('Hand tracking frame error:', error);
-                            }
-                        },
-                        width: 320,    // Reduced resolution for performance
-                        height: 240
-                    });
-                    
-                    // Start camera
-                    camera.start();
-                } catch(error) {
-                    console.error('Camera setup error:', error);
-                    document.getElementById('status').textContent = 'Camera error - check permissions';
-                }
-            }
-            
-            setupEvents() {
-                // Template selection
+                // Template selection buttons
                 document.querySelectorAll('.btn').forEach(button => {
-                    button.addEventListener('click', (event) => {
-                        // Remove active class from all buttons
+                    button.addEventListener('click', (e) => {
                         document.querySelectorAll('.btn').forEach(btn => {
                             btn.classList.remove('active');
                         });
-                        
-                        // Add active class to clicked button
-                        event.target.classList.add('active');
-                        
-                        // Update template
-                        this.template = event.target.dataset.template;
+                        e.target.classList.add('active');
+                        this.currentTemplate = e.target.dataset.template;
                     });
                 });
                 
-                // Window resize handling
-                window.addEventListener('resize', () => {
-                    this.camera.aspect = window.innerWidth / window.innerHeight;
-                    this.camera.updateProjectionMatrix();
-                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                // Close instructions
+                document.getElementById('close-instructions').addEventListener('click', () => {
+                    document.getElementById('instructions').style.display = 'none';
                 });
+                
+                // Window resize
+                window.addEventListener('resize', () => this.onWindowResize(), false);
             }
             
-            updateParticles() {
-                // Get attribute arrays
-                const positions = this.particles.geometry.attributes.position.array;
-                const colors = this.particles.geometry.attributes.color.array;
-                const sizes = this.particles.geometry.attributes.size.array;
+            // Touch event handlers
+            onTouchStart(e) {
+                e.preventDefault();
                 
-                // Update each particle based on template
+                if (e.touches.length === 1) {
+                    this.isDragging = true;
+                    this.lastTouchX = e.touches[0].clientX;
+                    this.lastTouchY = e.touches[0].clientY;
+                    this.autoRotate = false;
+                } else if (e.touches.length === 2) {
+                    this.isDragging = false;
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    this.touchStartDistance = Math.sqrt(dx * dx + dy * dy);
+                }
+            }
+            
+            onTouchMove(e) {
+                e.preventDefault();
+                
+                if (e.touches.length === 1 && this.isDragging) {
+                    // Rotation control
+                    const deltaX = e.touches[0].clientX - this.lastTouchX;
+                    const deltaY = e.touches[0].clientY - this.lastTouchY;
+                    
+                    this.rotationY += deltaX * 0.01;
+                    this.rotationX += deltaY * 0.01;
+                    
+                    this.lastTouchX = e.touches[0].clientX;
+                    this.lastTouchY = e.touches[0].clientY;
+                } else if (e.touches.length === 2) {
+                    // Pinch to zoom
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    const scaleChange = distance / this.touchStartDistance;
+                    this.scale = Math.max(0.3, Math.min(3, this.scale * scaleChange));
+                    
+                    this.touchStartDistance = distance;
+                }
+            }
+            
+            onTouchEnd(e) {
+                if (e.touches.length === 0) {
+                    this.isDragging = false;
+                }
+            }
+            
+            // Mouse event handlers (for desktop testing)
+            onMouseDown(e) {
+                this.isDragging = true;
+                this.lastTouchX = e.clientX;
+                this.lastTouchY = e.clientY;
+                this.autoRotate = false;
+            }
+            
+            onMouseMove(e) {
+                if (this.isDragging) {
+                    const deltaX = e.clientX - this.lastTouchX;
+                    const deltaY = e.clientY - this.lastTouchY;
+                    
+                    this.rotationY += deltaX * 0.01;
+                    this.rotationX += deltaY * 0.01;
+                    
+                    this.lastTouchX = e.clientX;
+                    this.lastTouchY = e.clientY;
+                }
+            }
+            
+            onMouseUp() {
+                this.isDragging = false;
+            }
+            
+            // Color explosion effect
+            explodeColors() {
+                for(let i = 0; i < this.particleCount; i++) {
+                    const i3 = i * 3;
+                    const hue = Math.random();
+                    const [r, g, b] = this.hslToRgb(hue, 0.9, 0.6);
+                    
+                    this.colors[i3] = r;
+                    this.colors[i3 + 1] = g;
+                    this.colors[i3 + 2] = b;
+                }
+                
+                this.geometry.attributes.color.needsUpdate = true;
+                document.getElementById('status').textContent = 'Color explosion!';
+                
+                setTimeout(() => {
+                    document.getElementById('status').textContent = 'Touch to control particles';
+                }, 2000);
+            }
+            
+            // Update particle positions based on template
+            updateParticles() {
+                const time = Date.now() * 0.001;
+                
                 for(let i = 0; i < this.particleCount; i++) {
                     const i3 = i * 3;
                     const angle = (i / this.particleCount) * Math.PI * 2;
-                    const baseRadius = 2 * (this.scale || 1);
+                    const baseRadius = 3 * this.scale;
                     
-                    // Apply template patterns
-                    switch(this.template) {
+                    switch(this.currentTemplate) {
                         case 'hearts':
                             // Heart shape
-                            const heartScale = 0.5 * (this.scale || 1);
+                            const heartScale = 0.8 * this.scale;
                             const x = heartScale * 16 * Math.pow(Math.sin(angle), 3);
-                            const y = heartScale * (13 * Math.cos(angle) - 5 * Math.cos(2 * angle));
-                            positions[i3] = x * 0.05;
-                            positions[i3 + 1] = y * 0.05;
-                            positions[i3 + 2] = 0;
+                            const y = heartScale * (13 * Math.cos(angle) - 5 * Math.cos(2 * angle) - 2 * Math.cos(3 * angle) - Math.cos(4 * angle));
+                            this.positions[i3] = x * 0.05;
+                            this.positions[i3 + 1] = y * 0.05;
+                            this.positions[i3 + 2] = Math.sin(time + i) * 0.5;
                             break;
                             
                         case 'stars':
                             // Star pattern
-                            const starAngle = (i / this.particleCount) * Math.PI * 2;
-                            const radius = (i % 2 === 0) ? baseRadius : baseRadius * 0.4;
-                            positions[i3] = Math.cos(starAngle) * radius * 0.3;
-                            positions[i3 + 1] = Math.sin(starAngle) * radius * 0.3;
-                            positions[i3 + 2] = 0;
+                            const points = 5;
+                            const starAngle = angle;
+                            const innerRadius = baseRadius * 0.4;
+                            const outerRadius = baseRadius;
+                            const radius = (i % 2 === 0) ? outerRadius : innerRadius;
+                            
+                            this.positions[i3] = Math.cos(starAngle) * radius * 0.3;
+                            this.positions[i3 + 1] = Math.sin(starAngle) * radius * 0.3;
+                            this.positions[i3 + 2] = Math.sin(time * 2 + i * 0.1) * 0.3;
                             break;
                             
                         case 'spiral':
-                            // Spiral pattern
-                            const spiralRadius = angle * 0.05 * (this.scale || 1);
-                            positions[i3] = Math.cos(angle) * spiralRadius;
-                            positions[i3 + 1] = Math.sin(angle) * spiralRadius;
-                            positions[i3 + 2] = (angle * 0.01 * (this.scale || 1)) - 1;
+                            // 3D Spiral
+                            const spiralRadius = angle * 0.1 * this.scale;
+                            this.positions[i3] = Math.cos(angle) * spiralRadius;
+                            this.positions[i3 + 1] = Math.sin(angle) * spiralRadius;
+                            this.positions[i3 + 2] = (angle * 0.05 * this.scale) - (Math.PI * this.scale);
                             break;
                             
                         case 'fireworks':
-                            // Radial/fireworks pattern
+                            // Explosive radial pattern
                             const fireworkAngle = Math.random() * Math.PI * 2;
                             const fireworkRadius = Math.random() * baseRadius;
-                            positions[i3] = Math.cos(fireworkAngle) * fireworkRadius;
-                            positions[i3 + 1] = Math.sin(fireworkAngle) * fireworkRadius;
-                            positions[i3 + 2] = (Math.random() - 0.5) * 0.5;
+                            this.positions[i3] = Math.cos(fireworkAngle) * fireworkRadius;
+                            this.positions[i3 + 1] = Math.sin(fireworkAngle) * fireworkRadius;
+                            this.positions[i3 + 2] = (Math.random() - 0.5) * baseRadius * 0.5;
                             break;
                             
                         default:
-                            // Default sphere distribution
+                            // Dynamic sphere with wave motion
                             const theta = (i / this.particleCount) * Math.PI * 2;
                             const phi = Math.acos(1 - 2 * (i / this.particleCount));
-                            positions[i3] = baseRadius * Math.sin(phi) * Math.cos(theta);
-                            positions[i3 + 1] = baseRadius * Math.sin(phi) * Math.sin(theta);
-                            positions[i3 + 2] = baseRadius * Math.cos(phi);
+                            const wave = Math.sin(time * 2 + theta * 3) * 0.3;
+                            
+                            this.positions[i3] = (baseRadius + wave) * Math.sin(phi) * Math.cos(theta);
+                            this.positions[i3 + 1] = (baseRadius + wave) * Math.sin(phi) * Math.sin(theta);
+                            this.positions[i3 + 2] = (baseRadius + wave) * Math.cos(phi);
                     }
                     
-                    // Update colors based on hand position
-                    const hueValue = ((this.hue || 0) + (i / this.particleCount) * 0.2) % 1;
+                    // Update colors with hue cycling
+                    const hueValue = (this.hue + (i / this.particleCount) * 0.3) % 1;
                     const [r, g, b] = this.hslToRgb(hueValue, 0.8, 0.6);
-                    colors[i3] = r;
-                    colors[i3 + 1] = g;
-                    colors[i3 + 2] = b;
+                    this.colors[i3] = r;
+                    this.colors[i3 + 1] = g;
+                    this.colors[i3 + 2] = b;
                     
-                    // Update sizes with scale factor
-                    sizes[i] = (Math.random() * 1.5 + 0.5) * (this.scale || 1);
+                    // Update sizes
+                    this.sizes[i] = (Math.random() * 1.2 + 0.5) * this.scale;
                 }
                 
                 // Mark attributes as needing update
-                this.particles.geometry.attributes.position.needsUpdate = true;
-                this.particles.geometry.attributes.color.needsUpdate = true;
-                this.particles.geometry.attributes.size.needsUpdate = true;
+                this.geometry.attributes.position.needsUpdate = true;
+                this.geometry.attributes.color.needsUpdate = true;
+                this.geometry.attributes.size.needsUpdate = true;
             }
             
-            // Helper function to convert HSL to RGB
+            // HSL to RGB conversion
             hslToRgb(h, s, l) {
                 let r, g, b;
                 
-                if(s === 0) {
-                    r = g = b = l; // achromatic
+                if (s === 0) {
+                    r = g = b = l;
                 } else {
                     const hue2rgb = (p, q, t) => {
-                        if(t < 0) t += 1;
-                        if(t > 1) t -= 1;
-                        if(t < 1/6) return p + (q - p) * 6 * t;
-                        if(t < 1/2) return q;
-                        if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                        if (t < 0) t += 1;
+                        if (t > 1) t -= 1;
+                        if (t < 1/6) return p + (q - p) * 6 * t;
+                        if (t < 1/2) return q;
+                        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
                         return p;
                     };
                     
                     const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
                     const p = 2 * l - q;
+                    
                     r = hue2rgb(p, q, h + 1/3);
                     g = hue2rgb(p, q, h);
                     b = hue2rgb(p, q, h - 1/3);
@@ -399,50 +394,67 @@
                 return [r, g, b];
             }
             
+            // Animation loop
             animate() {
-                // Request next frame
                 requestAnimationFrame(() => this.animate());
                 
                 // Update particles
                 this.updateParticles();
                 
-                // Auto-rotate when no hand detected
-                if(!this.scale) {
-                    this.particles.rotation.y += 0.005;
-                    this.particles.rotation.x += 0.002;
+                // Update rotations
+                if (this.autoRotate) {
+                    this.rotationY += 0.003;
+                    this.rotationX += 0.001;
                 }
                 
+                // Apply rotations to particle system
+                this.particleSystem.rotation.x = this.rotationX;
+                this.particleSystem.rotation.y = this.rotationY;
+                
                 // Subtle camera movement
-                const time = Date.now() * 0.0003;
-                this.camera.position.z = 8 + Math.sin(time) * 0.3;
+                const time = Date.now() * 0.0005;
+                this.camera.position.x = Math.sin(time) * 0.5;
+                this.camera.position.y = Math.cos(time * 0.7) * 0.3;
                 this.camera.lookAt(this.scene.position);
                 
-                // Render scene
+                // Update hue for color cycling
+                this.hue = (this.hue + 0.002) % 1;
+                
+                // Render
                 this.renderer.render(this.scene, this.camera);
+            }
+            
+            // Window resize handler
+            onWindowResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
             }
         }
 
-        // Enhanced loading with progress simulation
-        let progress = 0;
-        const loadingInterval = setInterval(() => {
-            progress += Math.random() * 15;
-            if(progress >= 100) {
-                progress = 100;
-                clearInterval(loadingInterval);
+        // Initialize the application when the page loads
+        window.addEventListener('load', () => {
+            // Hide loading if it exists
+            const loading = document.getElementById('loading');
+            if (loading) {
+                loading.style.display = 'none';
             }
-            document.getElementById('loading-bar').style.width = progress + '%';
-            document.getElementById('loading-status').textContent = 
-                progress < 30 ? 'Loading Three.js...' :
-                progress < 60 ? 'Loading MediaPipe...' :
-                progress < 90 ? 'Initializing camera...' : 'Almost ready...';
-        }, 200);
-        
-        // Timeout handler
-        setTimeout(() => {
-            if (typeof Hands === 'undefined') {
-                showRetryButton();
+            
+            // Initialize particle system
+            try {
+                new ParticleSystem();
+                console.log('Particle system initialized successfully');
+            } catch(error) {
+                console.error('Failed to initialize particle system:', error);
+                document.body.innerHTML = `
+                    <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:white;text-align:center;">
+                        <h2>Error Initializing</h2>
+                        <p>${error.message}</p>
+                        <p>Please refresh the page</p>
+                    </div>
+                `;
             }
-        }, 20000); // 20 second timeout
+        });
     </script>
 </body>
 </html>
