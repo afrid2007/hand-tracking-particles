@@ -30,7 +30,7 @@
             <div id="fps">FPS: 0</div>
             <div class="gesture-list">
                 🤏Pinch = Smaller<br>
-                ✋Spread = Bigger<br>
+                🤘Rock = Bigger<br>
                 ✌️Peace = Change Shape<br>
                 Rotate Hand = Rotate Visual
             </div>
@@ -260,12 +260,15 @@
                 const spread = Math.abs(index.x - pinky.x) + Math.abs(index.y - pinky.y);
                 handData.spread = Math.min(spread * 3, 1);
                 
-                // Check for peace sign (index + middle up, others down)
+                // Check for rock sign (index + pinky up, middle + ring down)
                 const indexUp = index.y < landmarks[6].y;
                 const middleUp = middle.y < landmarks[10].y;
-                const ringDown = ring.y > landmarks[14].y;
-                const pinkyDown = pinky.y > landmarks[18].y;
-                const isPeace = indexUp && middleUp && ringDown && pinkyDown;
+                const ringUp = ring.y < landmarks[14].y;
+                const pinkyUp = pinky.y < landmarks[18].y;
+                const isRock = indexUp && !middleUp && !ringUp && pinkyUp;
+                
+                // Check for peace sign (index + middle up, others down)
+                const isPeace = indexUp && middleUp && !ringUp && !pinkyUp;
                 
                 // Update gesture display and actions
                 if (isPeace) {
@@ -283,8 +286,8 @@
                 } else if (handData.pinch > 0.7) {
                     gestureElement.textContent = 'Gesture: 🤏 Pinch';
                     targetScale = 0.3;
-                } else if (handData.spread > 0.6) {
-                    gestureElement.textContent = 'Gesture: ✋ Spread';
+                } else if (isRock) {
+                    gestureElement.textContent = 'Gesture: 🤘 Rock';
                     targetScale = 2.5;
                 } else {
                     gestureElement.textContent = 'Gesture: 👋 Detected';
