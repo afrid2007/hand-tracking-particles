@@ -3,16 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Hand Gesture Particle System</title>
+    <title>Real Hand Tracking Particles</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/handtrackjs@0.0.16/dist/handtrack.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body { overflow: hidden; background: #000; font-family: Arial, sans-serif; }
         
         #video-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; }
-        #video-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        #video-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
         #canvas-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
+        
+        #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; 
+                  display: flex; flex-direction: column; justify-content: center; align-items: center; 
+                  color: white; z-index: 1000; }
+        .spinner { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid #00ff00; 
+                  border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #loading-text { text-align: center; padding: 0 20px; }
+        #loading-text h2 { color: #00ff00; margin-bottom: 10px; }
+        #loading-progress { width: 80%; height: 4px; background: #333; margin: 15px 0; border-radius: 2px; overflow: hidden; }
+        #loading-bar { height: 100%; background: #00ff00; width: 0%; transition: width 0.3s; }
         
         #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
                    background: rgba(0,0,0,0.7); padding: 10px; border-radius: 20px;
@@ -33,20 +45,18 @@
         #instructions p { margin: 8px 0; font-size: 14px; line-height: 1.4; }
         #close-instructions { background: #00ff00; color: black; border: none; padding: 10px 20px;
                              border-radius: 20px; margin-top: 15px; font-weight: bold; cursor: pointer; }
-        
-        #permission-prompt { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-                           background: #000; display: flex; flex-direction: column;
-                           justify-content: center; align-items: center; color: white; z-index: 300; }
-        #permission-prompt button { background: #00ff00; color: black; border: none; padding: 15px 30px;
-                                  border-radius: 30px; margin-top: 20px; font-size: 16px; font-weight: bold;
-                                  cursor: pointer; }
     </style>
 </head>
 <body>
-    <div id="permission-prompt">
-        <h2>Camera Access Required</h2>
-        <p>This app uses your camera for hand gesture tracking</p>
-        <button id="start-camera">ALLOW CAMERA ACCESS</button>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">
+            <h2>Loading Hand Tracking...</h2>
+            <p>Downloading AI models (5-10MB)</p>
+            <p>Please be patient on first load</p>
+            <div id="loading-progress"><div id="loading-bar"></div></div>
+            <p id="loading-status">Initializing...</p>
+        </div>
     </div>
     
     <div id="video-container">
@@ -55,14 +65,14 @@
         <div id="overlay"></div>
     </div>
     
-    <div id="status">Initializing camera...</div>
+    <div id="status">Initializing hand tracking...</div>
     
     <div id="instructions">
-        <h3>Hand Gesture Particle System</h3>
+        <h3>Real Hand Tracking Particles</h3>
         <p>• Show your hand to camera</p>
-        <p>• Pinch thumb & index finger to resize particles</p>
-        <p>• Move hand left/right to change colors</p>
-        <p>• Move hand up/down to switch templates</p>
+        <p>• Pinch thumb & index finger to resize</p>
+        <p>• Move hand to control particle colors</p>
+        <p>• Use buttons below to change templates</p>
         <button id="close-instructions">START</button>
     </div>
     
@@ -75,12 +85,11 @@
     </div>
 
     <script>
-        class HandGestureParticleSystem {
+        class RealHandTrackingParticles {
             constructor() {
                 this.video = document.getElementById('video-feed');
                 this.canvasOverlay = document.getElementById('canvas-overlay');
                 this.ctx = this.canvasOverlay.getContext('2d');
-                this.stream = null;
                 
                 // Three.js setup
                 this.scene = new THREE.Scene();
@@ -97,13 +106,14 @@
                 document.getElementById('overlay').appendChild(this.renderer.domElement);
                 
                 // Particle system
-                this.particleCount = 800;
+                this.particleCount = 600;
                 this.currentTemplate = 'default';
                 this.scale = 1;
                 this.hue = 0;
                 this.autoRotate = true;
                 
-                // Hand tracking simulation (since we can't use MediaPipe)
+                // Hand tracking
+                this.model = null;
                 this.handDetected = false;
                 this.handX = 0.5;
                 this.handY = 0.5;
@@ -112,127 +122,133 @@
                 // Setup
                 this.setupParticles();
                 this.setupEventListeners();
-                this.animate();
                 
-                // Start camera when user clicks
-                document.getElementById('start-camera').addEventListener('click', () => {
-                    this.initCamera();
-                });
+                // Start loading process
+                this.loadHandTrackingModel();
+            }
+            
+            async loadHandTrackingModel() {
+                try {
+                    document.getElementById('loading-status').textContent = 'Loading HandTrack.js model...';
+                    
+                    // HandTrack.js model options
+                    const modelParams = {
+                        flipHorizontal: false,
+                        imageScaleFactor: 0.7,
+                        maxNumBoxes: 1,
+                        iouThreshold: 0.5,
+                        scoreThreshold: 0.7
+                    };
+                    
+                    // Load model
+                    this.model = await handTrack.load(modelParams);
+                    
+                    document.getElementById('loading-status').textContent = 'Model loaded, starting camera...';
+                    await this.initCamera();
+                    
+                } catch(error) {
+                    console.error('Model loading error:', error);
+                    document.getElementById('loading-text').innerHTML = `
+                        <h2>Model Load Failed</h2>
+                        <p>${error.message}</p>
+                        <p>Check console for details</p>
+                        <button onclick="location.reload()" style="background:#00ff00;color:black;border:none;padding:10px 20px;border-radius:20px;margin-top:15px;cursor:pointer;">RETRY</button>
+                    `;
+                }
             }
             
             async initCamera() {
                 try {
-                    document.getElementById('status').textContent = 'Accessing camera...';
+                    document.getElementById('loading-status').textContent = 'Accessing camera...';
                     
                     // Request camera access
-                    this.stream = await navigator.mediaDevices.getUserMedia({ 
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
                         video: { 
-                            width: { ideal: 640 },
-                            height: { ideal: 480 },
+                            width: { ideal: 480 },
+                            height: { ideal: 360 },
                             facingMode: 'user'
                         } 
                     });
                     
-                    this.video.srcObject = this.stream;
-                    document.getElementById('permission-prompt').style.display = 'none';
-                    document.getElementById('status').textContent = 'Camera ready - show hand';
+                    this.video.srcObject = stream;
                     
-                    // Start hand tracking simulation
-                    this.startHandTracking();
+                    // Wait for video to be ready
+                    this.video.addEventListener('loadeddata', () => {
+                        this.canvasOverlay.width = this.video.videoWidth;
+                        this.canvasOverlay.height = this.video.videoHeight;
+                        this.startHandTracking();
+                        this.hideLoading();
+                    });
                     
                 } catch(error) {
                     console.error('Camera error:', error);
-                    document.getElementById('status').textContent = 'Camera access denied';
-                    document.getElementById('permission-prompt').innerHTML = `
+                    document.getElementById('loading-text').innerHTML = `
                         <h2>Camera Access Denied</h2>
-                        <p>Please enable camera permissions and refresh</p>
-                        <button onclick="location.reload()">REFRESH PAGE</button>
+                        <p>Please enable camera permissions</p>
+                        <button onclick="location.reload()" style="background:#00ff00;color:black;border:none;padding:10px 20px;border-radius:20px;margin-top:15px;cursor:pointer;">REFRESH</button>
                     `;
                 }
             }
             
             startHandTracking() {
-                // Simulate hand tracking by analyzing video frames
-                const processFrame = () => {
-                    if (this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
-                        // Update canvas size
-                        this.canvasOverlay.width = this.video.videoWidth;
-                        this.canvasOverlay.height = this.video.videoHeight;
-                        
-                        // Draw video frame to canvas
-                        this.ctx.drawImage(this.video, 0, 0, this.canvasOverlay.width, this.canvasOverlay.height);
-                        
-                        // Get image data for simple hand detection
-                        const imageData = this.ctx.getImageData(0, 0, this.canvasOverlay.width, this.canvasOverlay.height);
-                        this.analyzeFrame(imageData);
+                const detectHands = async () => {
+                    try {
+                        const predictions = await this.model.detect(this.video);
+                        this.processPredictions(predictions);
+                    } catch(error) {
+                        console.error('Detection error:', error);
                     }
                     
-                    requestAnimationFrame(processFrame);
+                    requestAnimationFrame(detectHands);
                 };
                 
-                processFrame();
+                detectHands();
+                this.animate();
             }
             
-            analyzeFrame(imageData) {
-                const { data, width, height } = imageData;
-                let handPixels = 0;
-                let totalPixels = width * height;
-                let sumX = 0, sumY = 0;
-                
-                // Simple skin color detection (approximate)
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
+            processPredictions(predictions) {
+                if (predictions.length > 0) {
+                    const hand = predictions[0];
+                    this.handDetected = true;
                     
-                    // Basic skin tone detection (simplified)
-                    if (r > 95 && g > 40 && b > 20 && 
-                        r > g && r > b && 
-                        Math.abs(r - g) > 15) {
-                        
-                        handPixels++;
-                        const pixelIndex = i / 4;
-                        const x = pixelIndex % width;
-                        const y = Math.floor(pixelIndex / width);
-                        
-                        sumX += x;
-                        sumY += y;
-                    }
-                }
-                
-                // If enough skin-colored pixels detected, consider hand present
-                const handThreshold = totalPixels * 0.05; // 5% of screen
-                this.handDetected = handPixels > handThreshold;
-                
-                if (this.handDetected) {
-                    // Calculate average hand position
-                    this.handX = sumX / handPixels / width;
-                    this.handY = sumY / handPixels / height;
+                    // Get hand center position (0-1 normalized)
+                    this.handX = (hand.bbox[0] + hand.bbox[2] / 2) / this.video.videoWidth;
+                    this.handY = (hand.bbox[1] + hand.bbox[3] / 2) / this.video.videoHeight;
                     
-                    // Simulate pinch detection based on hand position variance
-                    this.pinchDistance = 0.5 + Math.abs(0.5 - this.handY) * 2;
-                    this.scale = Math.max(0.3, Math.min(3, this.pinchDistance));
+                    // Simulate pinch based on hand size
+                    const handSize = Math.max(hand.bbox[2], hand.bbox[3]);
+                    this.pinchDistance = Math.max(0.3, Math.min(3, handSize / 100));
+                    this.scale = this.pinchDistance;
                     
-                    // Color based on horizontal position
+                    // Color based on hand position
                     this.hue = this.handX;
                     
-                    // Template based on vertical position
-                    const templateIndex = Math.floor(this.handY * 5);
-                    const templates = ['default', 'hearts', 'stars', 'spiral', 'fireworks'];
-                    this.currentTemplate = templates[Math.min(4, Math.max(0, templateIndex))];
+                    // Draw bounding box for visual feedback
+                    this.drawHandBox(hand);
                     
-                    // Update template button UI
-                    document.querySelectorAll('.btn').forEach((btn, index) => {
-                        btn.classList.remove('active');
-                        if (index === templateIndex) {
-                            btn.classList.add('active');
-                        }
-                    });
-                    
-                    document.getElementById('status').textContent = 'Hand detected - gestures active';
+                    document.getElementById('status').textContent = 'Hand detected - controlling particles';
                 } else {
+                    this.handDetected = false;
                     document.getElementById('status').textContent = 'Show hand to camera';
+                    this.ctx.clearRect(0, 0, this.canvasOverlay.width, this.canvasOverlay.height);
                 }
+            }
+            
+            drawHandBox(hand) {
+                this.ctx.clearRect(0, 0, this.canvasOverlay.width, this.canvasOverlay.height);
+                this.ctx.strokeStyle = '#00ff00';
+                this.ctx.lineWidth = 3;
+                this.ctx.strokeRect(hand.bbox[0], hand.bbox[1], hand.bbox[2], hand.bbox[3]);
+                
+                // Draw center point
+                this.ctx.fillStyle = '#ff0000';
+                this.ctx.beginPath();
+                this.ctx.arc(
+                    hand.bbox[0] + hand.bbox[2] / 2,
+                    hand.bbox[1] + hand.bbox[3] / 2,
+                    5, 0, 2 * Math.PI
+                );
+                this.ctx.fill();
             }
             
             setupParticles() {
@@ -257,7 +273,7 @@
                 geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
                 
                 const material = new THREE.PointsMaterial({
-                    size: 0.1,
+                    size: 0.12,
                     vertexColors: true,
                     transparent: true,
                     opacity: 0.8,
@@ -270,7 +286,7 @@
             }
             
             setupEventListeners() {
-                // Template buttons (fallback for manual control)
+                // Template buttons
                 document.querySelectorAll('.btn').forEach((button, index) => {
                     button.addEventListener('click', (e) => {
                         document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
@@ -373,8 +389,8 @@
                 
                 if (this.handDetected) {
                     this.autoRotate = false;
-                    this.particleSystem.rotation.y = this.handX * Math.PI * 2;
-                    this.particleSystem.rotation.x = this.handY * Math.PI;
+                    this.particleSystem.rotation.y = (this.handX - 0.5) * Math.PI;
+                    this.particleSystem.rotation.x = (this.handY - 0.5) * Math.PI;
                 } else if (this.autoRotate) {
                     this.particleSystem.rotation.y += 0.005;
                     this.particleSystem.rotation.x += 0.002;
@@ -391,11 +407,29 @@
                 this.camera.updateProjectionMatrix();
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
             }
+            
+            hideLoading() {
+                // Simulate loading progress
+                let progress = 0;
+                const loadingInterval = setInterval(() => {
+                    progress += Math.random() * 20;
+                    if (progress >= 100) {
+                        progress = 100;
+                        clearInterval(loadingInterval);
+                        setTimeout(() => {
+                            document.getElementById('loading').style.display = 'none';
+                        }, 500);
+                    }
+                    document.getElementById('loading-bar').style.width = progress + '%';
+                    document.getElementById('loading-status').textContent = 
+                        progress < 50 ? 'Loading model...' : 'Almost ready...';
+                }, 100);
+            }
         }
 
         // Initialize when page loads
         window.addEventListener('load', () => {
-            new HandGestureParticleSystem();
+            new RealHandTrackingParticles();
         });
     </script>
 </body>
