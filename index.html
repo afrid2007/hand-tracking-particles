@@ -29,9 +29,10 @@
             <div id="gesture">Gesture: None</div>
             <div id="fps">FPS: 0</div>
             <div class="gesture-list">
-                ✌️Peace • 🤘Rock • 👌OK<br>
-                👍Thumbs • ✊Fist • 👉Point<br>
-                🤏Pinch • ✋Spread
+                🤏Pinch = Smaller<br>
+                ✋Spread = Bigger<br>
+                ✌️Peace = Change Shape<br>
+                Rotate Hand = Rotate Visual
             </div>
         </div>
         <div id="controls">
@@ -53,11 +54,13 @@
         const fpsElement = document.getElementById('fps');
         
         let scene, camera, renderer, particles, particleSystem;
-        let handData = { detected: false, x: 0, y: 0, z: 0, pinch: 0, spread: 0 };
+        let handData = { detected: false, x: 0, y: 0, z: 0, rotation: 0, pinch: 0, spread: 0 };
         let currentShape = 'heart';
         let targetScale = 1;
         let currentScale = 1;
-        let colorHue = 0;
+        let shapes = ['sphere', 'heart', 'flower', 'saturn', 'firework'];
+        let shapeIndex = 1;
+        let lastPeaceTime = 0;
 
         const PARTICLE_COUNT = 5000;
         
@@ -184,7 +187,7 @@
         async function initHandTracking() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'user', width: 640, height: 480 } 
+                    video: { facingMode: 'user', width: 640, height: 480 } // Front camera
                 });
                 videoElement.srcObject = stream;
                 
@@ -229,11 +232,6 @@
             loadingElement.style.display = 'none';
         }
 
-        let currentGesture = 'none';
-        let gestureStartTime = 0;
-        let rotationSpeed = 0.002;
-        let explosionActive = false;
-
         function onHandResults(results) {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
@@ -245,9 +243,11 @@
                 const wrist = landmarks[0];
                 
                 handData.detected = true;
-                handData.x = (landmarks[9].x - 0.5) * 4;
-                handData.y = -(landmarks[9].y - 0.5) * 3;
-                handData.z = -landmarks[9].z * 5;
+                
+                // Calculate hand rotation (wrist to middle finger direction)
+                const dx = landmarks[9].x - wrist.x;
+                const dy = landmarks[9].y - wrist.y;
+                handData.rotation = Math.atan2(dy, dx);
                 
                 // Calculate pinch (thumb-index distance)
                 const pinchDist = Math.sqrt(
@@ -260,108 +260,40 @@
                 const spread = Math.abs(index.x - pinky.x) + Math.abs(index.y - pinky.y);
                 handData.spread = Math.min(spread * 3, 1);
                 
-                // Finger tip heights (y position)
-                const thumbTip = thumb.y;
-                const indexTip = index.y;
-                const middleTip = middle.y;
-                const ringTip = ring.y;
-                const pinkyTip = pinky.y;
+                // Check for peace sign (index + middle up, others down)
+                const indexUp = index.y < landmarks[6].y;
+                const middleUp = middle.y < landmarks[10].y;
+                const ringDown = ring.y > landmarks[14].y;
+                const pinkyDown = pinky.y > landmarks[18].y;
+                const isPeace = indexUp && middleUp && ringDown && pinkyDown;
                 
-                // Count extended fingers
-                const indexUp = indexTip < landmarks[6].y;
-                const middleUp = middleTip < landmarks[10].y;
-                const ringUp = ringTip < landmarks[14].y;
-                const pinkyUp = pinkyTip < landmarks[18].y;
-                const thumbUp = thumbTip < landmarks[2].y;
-                
-                const extendedFingers = [indexUp, middleUp, ringUp, pinkyUp].filter(f => f).length;
-                
-                // Peace sign (index + middle up, others down)
-                const isPeace = indexUp && middleUp && !ringUp && !pinkyUp;
-                
-                // Rock sign (index + pinky up, others down)
-                const isRock = indexUp && !middleUp && !ringUp && pinkyUp;
-                
-                // Thumbs up
-                const isThumbsUp = thumbUp && !indexUp && !middleUp && !ringUp && !pinkyUp;
-                
-                // Fist (all fingers closed)
-                const isFist = !indexUp && !middleUp && !ringUp && !pinkyUp;
-                
-                // OK sign (thumb and index pinched, others extended)
-                const isOK = handData.pinch > 0.7 && middleUp && ringUp && pinkyUp;
-                
-                // Point (only index up)
-                const isPoint = indexUp && !middleUp && !ringUp && !pinkyUp && !thumbUp;
-                
-                // Detect gesture
-                let newGesture = 'wave';
-                
-                if (isOK) {
-                    newGesture = 'ok';
-                    gestureElement.textContent = 'Gesture: 👌 OK';
-                    targetScale = 0.5;
-                    rotationSpeed = 0.05;
-                } else if (isPeace) {
-                    newGesture = 'peace';
+                // Update gesture display and actions
+                if (isPeace) {
+                    const now = Date.now();
+                    if (now - lastPeaceTime > 1000) { // Debounce 1 second
+                        shapeIndex = (shapeIndex + 1) % shapes.length;
+                        currentShape = shapes[shapeIndex];
+                        createParticleSystem();
+                        document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+                        document.querySelector(`[data-shape="${currentShape}"]`).classList.add('active');
+                        lastPeaceTime = now;
+                    }
                     gestureElement.textContent = 'Gesture: ✌️ Peace';
-                    targetScale = 1.5;
-                    rotationSpeed = 0.01;
-                    colorHue = (colorHue + 2) % 360;
-                } else if (isRock) {
-                    newGesture = 'rock';
-                    gestureElement.textContent = 'Gesture: 🤘 Rock';
-                    targetScale = 1.8;
-                    rotationSpeed = 0.03;
-                    explosionActive = true;
-                } else if (isThumbsUp) {
-                    newGesture = 'thumbsup';
-                    gestureElement.textContent = 'Gesture: 👍 Thumbs Up';
-                    targetScale = 1.2;
-                    rotationSpeed = 0.015;
-                } else if (isFist) {
-                    newGesture = 'fist';
-                    gestureElement.textContent = 'Gesture: ✊ Fist';
-                    targetScale = 0.2;
-                    rotationSpeed = 0;
-                    explosionActive = false;
-                } else if (isPoint) {
-                    newGesture = 'point';
-                    gestureElement.textContent = 'Gesture: 👉 Point';
-                    targetScale = 1.0;
-                    rotationSpeed = 0.005;
+                    targetScale = 1;
                 } else if (handData.pinch > 0.7) {
-                    newGesture = 'pinch';
                     gestureElement.textContent = 'Gesture: 🤏 Pinch';
                     targetScale = 0.3;
-                    rotationSpeed = 0.002;
                 } else if (handData.spread > 0.6) {
-                    newGesture = 'spread';
                     gestureElement.textContent = 'Gesture: ✋ Spread';
                     targetScale = 2.5;
-                    rotationSpeed = 0.008;
                 } else {
-                    newGesture = 'wave';
-                    gestureElement.textContent = 'Gesture: 👋 Wave';
+                    gestureElement.textContent = 'Gesture: 👋 Detected';
                     targetScale = 1;
-                    rotationSpeed = 0.002;
-                    explosionActive = false;
                 }
-                
-                // Track gesture duration
-                if (newGesture !== currentGesture) {
-                    currentGesture = newGesture;
-                    gestureStartTime = Date.now();
-                }
-                
-                colorHue = (colorHue + 0.5) % 360;
             } else {
                 handData.detected = false;
                 gestureElement.textContent = 'Gesture: None';
                 targetScale = 1;
-                rotationSpeed = 0.002;
-                explosionActive = false;
-                currentGesture = 'none';
             }
         }
 
@@ -386,95 +318,13 @@
                 currentScale += (targetScale - currentScale) * 0.1;
                 particleSystem.scale.set(currentScale, currentScale, currentScale);
                 
-                // Rotate based on hand position
+                // Rotate based on hand rotation
                 if (handData.detected) {
-                    particleSystem.rotation.y += handData.x * 0.01 + rotationSpeed;
-                    particleSystem.rotation.x += handData.y * 0.01;
-                    particleSystem.position.x = handData.x * 0.5;
-                    particleSystem.position.y = handData.y * 0.5;
-                    
-                    // Gesture-specific effects
-                    const colors = particleSystem.geometry.attributes.color.array;
-                    const positions = particleSystem.geometry.attributes.position.array;
-                    
-                    if (currentGesture === 'peace') {
-                        // Rainbow wave effect
-                        for (let i = 0; i < colors.length; i += 3) {
-                            const h = (colorHue + (i / colors.length) * 360 + now * 0.1) % 360;
-                            const c = new THREE.Color().setHSL(h / 360, 0.8, 0.6);
-                            colors[i] = c.r;
-                            colors[i + 1] = c.g;
-                            colors[i + 2] = c.b;
-                        }
-                        particleSystem.geometry.attributes.color.needsUpdate = true;
-                    } else if (currentGesture === 'rock' && explosionActive) {
-                        // Explosion effect
-                        for (let i = 0; i < positions.length; i += 3) {
-                            const distance = Math.sqrt(
-                                positions[i] * positions[i] +
-                                positions[i + 1] * positions[i + 1] +
-                                positions[i + 2] * positions[i + 2]
-                            );
-                            const expansion = Math.sin(now * 0.003) * 0.3;
-                            positions[i] *= 1 + expansion * 0.01;
-                            positions[i + 1] *= 1 + expansion * 0.01;
-                            positions[i + 2] *= 1 + expansion * 0.01;
-                        }
-                        particleSystem.geometry.attributes.position.needsUpdate = true;
-                        
-                        // Red-orange color
-                        for (let i = 0; i < colors.length; i += 3) {
-                            const c = new THREE.Color().setHSL((10 + Math.random() * 40) / 360, 0.9, 0.6);
-                            colors[i] = c.r;
-                            colors[i + 1] = c.g;
-                            colors[i + 2] = c.b;
-                        }
-                        particleSystem.geometry.attributes.color.needsUpdate = true;
-                    } else if (currentGesture === 'ok') {
-                        // Spiral effect
-                        particleSystem.rotation.z += 0.03;
-                        for (let i = 0; i < colors.length; i += 3) {
-                            const c = new THREE.Color().setHSL(0.6, 0.8, 0.6);
-                            colors[i] = c.r;
-                            colors[i + 1] = c.g;
-                            colors[i + 2] = c.b;
-                        }
-                        particleSystem.geometry.attributes.color.needsUpdate = true;
-                    } else if (currentGesture === 'thumbsup') {
-                        // Gold color
-                        for (let i = 0; i < colors.length; i += 3) {
-                            const c = new THREE.Color().setHSL(0.13, 0.9, 0.6);
-                            colors[i] = c.r;
-                            colors[i + 1] = c.g;
-                            colors[i + 2] = c.b;
-                        }
-                        particleSystem.geometry.attributes.color.needsUpdate = true;
-                    } else if (currentGesture === 'fist') {
-                        // Compress and darken
-                        for (let i = 0; i < colors.length; i += 3) {
-                            colors[i] *= 0.95;
-                            colors[i + 1] *= 0.95;
-                            colors[i + 2] *= 0.95;
-                        }
-                        particleSystem.geometry.attributes.color.needsUpdate = true;
-                    } else if (currentGesture === 'point') {
-                        // Follow direction with beam effect
-                        particleSystem.rotation.z = Math.sin(now * 0.002) * 0.2;
-                    } else if (currentGesture === 'pinch') {
-                        // Color shift
-                        for (let i = 0; i < colors.length; i += 3) {
-                            const c = new THREE.Color().setHSL((colorHue + i) / colors.length, 0.8, 0.6);
-                            colors[i] = c.r;
-                            colors[i + 1] = c.g;
-                            colors[i + 2] = c.b;
-                        }
-                        particleSystem.geometry.attributes.color.needsUpdate = true;
-                    }
+                    particleSystem.rotation.z = -handData.rotation;
+                    particleSystem.rotation.y += 0.01;
                 } else {
-                    particleSystem.rotation.y += rotationSpeed;
+                    particleSystem.rotation.y += 0.002;
                     particleSystem.rotation.z *= 0.95;
-                    particleSystem.position.x *= 0.95;
-                    particleSystem.position.y *= 0.95;
                 }
             }
             
@@ -487,6 +337,7 @@
                 document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentShape = btn.dataset.shape;
+                shapeIndex = shapes.indexOf(currentShape);
                 createParticleSystem();
             });
         });
