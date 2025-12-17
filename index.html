@@ -3,646 +3,261 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Mobile Hand Tracking Particles</title>
+    <title>Hand Tracking Particles</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1620248257/camera_utils.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            touch-action: none;
-        }
-        
-        body {
-            overflow: hidden;
-            background: #000;
-            font-family: Arial, sans-serif;
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
-            user-select: none;
-        }
-        
-        #container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-        }
-        
-        #webcam-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            overflow: hidden;
-        }
-        
-        #webcam {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1);
-        }
-        
-        #overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 2;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+        body { overflow: hidden; background: #000; font-family: Arial, sans-serif; }
         
         #loading {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #000;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            z-index: 1000;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; color: white; z-index: 1000;
         }
         
-        #loading-bar {
-            width: 80%;
-            height: 4px;
-            background: #333;
-            margin-top: 20px;
-            border-radius: 2px;
-            overflow: hidden;
-        }
+        .spinner { width: 50px; height: 50px; border: 5px solid #333; 
+                  border-top: 5px solid #00ff00; border-radius: 50%;
+                  animation: spin 1s linear infinite; margin-bottom: 20px; }
         
-        #loading-progress {
-            height: 100%;
-            background: #00ff00;
-            width: 0%;
-            transition: width 0.3s;
-        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        #controls {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 20px;
-            display: flex;
-            gap: 8px;
-            z-index: 100;
-        }
+        #loading-text { text-align: center; padding: 0 20px; }
+        #loading-text h2 { color: #00ff00; margin-bottom: 10px; }
+        #loading-text p { margin: 5px 0; font-size: 14px; opacity: 0.8; }
+        #loading-progress { width: 80%; height: 4px; background: #333; margin: 15px 0; border-radius: 2px; overflow: hidden; }
+        #loading-bar { height: 100%; background: #00ff00; width: 0%; transition: width 0.3s; }
         
-        .template-btn {
-            background: #333;
-            color: white;
-            border: none;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
+        #container, #webcam, #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #webcam { object-fit: cover; transform: scaleX(-1); }
+        #overlay { z-index: 10; pointer-events: none; }
         
-        .template-btn.active {
-            background: #00ff00;
-            color: black;
-            transform: scale(1.1);
-        }
+        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+                   background: rgba(0,0,0,0.7); padding: 10px; border-radius: 20px;
+                   display: flex; gap: 8px; z-index: 100; }
         
-        #status {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 8px 12px;
-            border-radius: 15px;
-            font-size: 12px;
-            z-index: 100;
-        }
+        .btn { background: #333; color: white; border: none; width: 40px; height: 40px;
+              border-radius: 50%; display: flex; align-items: center; justify-content: center;
+              cursor: pointer; transition: all 0.2s; font-size: 12px; }
         
-        #instructions {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            z-index: 200;
-            max-width: 80%;
-        }
+        .btn.active { background: #00ff00; color: black; transform: scale(1.1); }
         
-        #instructions h3 {
-            margin-bottom: 15px;
-            color: #00ff00;
-        }
-        
-        #instructions p {
-            margin: 8px 0;
-            font-size: 14px;
-            line-height: 1.4;
-        }
-        
-        #close-instructions {
-            background: #00ff00;
-            color: black;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 15px;
-            margin-top: 15px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        
-        #hand-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 50;
-        }
-        
-        .hand-point {
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: rgba(0, 255, 0, 0.7);
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-        }
-        
-        @media (max-width: 480px) {
-            .template-btn {
-                width: 35px;
-                height: 35px;
-                font-size: 10px;
-            }
-            
-            #controls {
-                padding: 8px;
-                gap: 6px;
-            }
-            
-            #status {
-                font-size: 10px;
-                padding: 6px 10px;
-            }
-        }
+        #status { position: absolute; top: 10px; left: 10px; color: white;
+                 background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 15px;
+                 font-size: 12px; z-index: 100; }
     </style>
 </head>
 <body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">
+            <h2>Loading Hand Tracking...</h2>
+            <p>Downloading AI models (10-15MB)</p>
+            <p>Please be patient on first load</p>
+            <div id="loading-progress"><div id="loading-bar"></div></div>
+            <p id="loading-status">Initializing...</p>
+        </div>
+    </div>
+
     <div id="container">
-        <div id="loading">
-            <div>Loading Hand Tracking...</div>
-            <div id="loading-bar">
-                <div id="loading-progress"></div>
-            </div>
-        </div>
-        
-        <div id="webcam-container">
-            <video id="webcam" autoplay playsinline></video>
-        </div>
-        
+        <video id="webcam" autoplay playsinline></video>
         <div id="overlay"></div>
-        <div id="hand-overlay"></div>
-        
-        <div id="status">Initializing hand tracking...</div>
-        
-        <div id="instructions">
-            <h3>Hand Tracking Particles</h3>
-            <p>• Show your hand to camera</p>
-            <p>• Pinch thumb & index finger to control size</p>
-            <p>• Move hand left/right for color changes</p>
-            <p>• Use buttons below to change shapes</p>
-            <button id="close-instructions">START</button>
-        </div>
+        <div id="status">Initializing...</div>
         
         <div id="controls">
-            <button class="template-btn active" data-template="default">●</button>
-            <button class="template-btn" data-template="hearts">♥</button>
-            <button class="template-btn" data-template="stars">★</button>
-            <button class="template-btn" data-template="spiral">🌀</button>
-            <button class="template-btn" data-template="fireworks">✨</button>
+            <button class="btn active" data-template="default">●</button>
+            <button class="btn" data-template="hearts">♥</button>
+            <button class="btn" data-template="stars">★</button>
+            <button class="btn" data-template="spiral">🌀</button>
+            <button class="btn" data-template="fireworks">✨</button>
         </div>
     </div>
 
     <script>
-        class HandTrackingParticleSystem {
+        class HandParticleApp {
             constructor() {
-                this.scene = null;
-                this.camera = null;
-                this.renderer = null;
-                this.particleSystem = null;
-                this.particlesGeometry = null;
-                
-                // Performance settings
-                this.particleCount = 1000; // Optimized for 30fps
-                this.targetFPS = 30;
-                this.frameTime = 1000 / this.targetFPS;
-                
-                // Hand tracking
-                this.handsModule = null;
-                this.videoElement = null;
-                this.handLandmarks = null;
-                this.handDetected = false;
-                this.handDistance = 0;
-                this.handPositionX = 0;
-                
-                // Animation
-                this.clock = new THREE.Clock();
-                this.lastFrameTime = 0;
-                this.expansionFactor = 1;
-                this.colorHue = 0;
-                this.currentTemplate = 'default';
-                
-                // Performance monitoring
-                this.frameCount = 0;
-                this.lastFpsUpdate = 0;
-                this.fps = 30;
-                
-                this.init();
-            }
-            
-            init() {
-                this.setupScene();
-                this.setupParticleSystem();
-                this.setupHandTracking();
-                this.setupEventListeners();
-                this.hideLoading();
-                this.showInstructions();
-            }
-            
-            setupScene() {
-                // Create scene
                 this.scene = new THREE.Scene();
-                this.scene.background = new THREE.Color(0x000011);
-                
-                // Create camera (optimized FOV)
-                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+                this.camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
                 this.camera.position.z = 8;
-                
-                // Create renderer with mobile optimizations
-                this.renderer = new THREE.WebGLRenderer({ 
-                    antialias: false,
-                    alpha: true,
-                    powerPreference: "low-power"
-                });
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.2)); // Lower pixel ratio
-                this.renderer.setClearColor(0x000011, 1);
-                
+                this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "low-power" });
+                this.renderer.setSize(innerWidth, innerHeight);
+                this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.2));
                 document.getElementById('overlay').appendChild(this.renderer.domElement);
+                
+                this.particleCount = 800;
+                this.setupParticles();
+                this.setupHandTracking();
+                this.setupEvents();
+                this.animate();
             }
             
-            setupParticleSystem() {
-                // Create optimized geometry
-                this.particlesGeometry = new THREE.BufferGeometry();
+            setupParticles() {
+                const geo = new THREE.BufferGeometry();
+                const pos = new Float32Array(this.particleCount * 3);
+                const col = new Float32Array(this.particleCount * 3);
+                const siz = new Float32Array(this.particleCount);
                 
-                // Pre-allocate arrays
-                const positions = new Float32Array(this.particleCount * 3);
-                const colors = new Float32Array(this.particleCount * 3);
-                const sizes = new Float32Array(this.particleCount);
-                
-                // Initialize with default positions
-                for (let i = 0; i < this.particleCount; i++) {
+                for(let i = 0; i < this.particleCount; i++) {
                     const i3 = i * 3;
-                    
-                    // Sphere distribution for better performance
                     const theta = Math.random() * Math.PI * 2;
                     const phi = Math.acos(2 * Math.random() - 1);
-                    const radius = 2;
-                    
-                    positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-                    positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-                    positions[i3 + 2] = radius * Math.cos(phi);
-                    
-                    // Default colors
-                    colors[i3] = 0.5;
-                    colors[i3 + 1] = 0.7;
-                    colors[i3 + 2] = 1.0;
-                    
-                    // Sizes
-                    sizes[i] = Math.random() * 1.5 + 0.5;
+                    pos[i3] = 2 * Math.sin(phi) * Math.cos(theta);
+                    pos[i3 + 1] = 2 * Math.sin(phi) * Math.sin(theta);
+                    pos[i3 + 2] = 2 * Math.cos(phi);
+                    col[i3] = 0.5; col[i3 + 1] = 0.7; col[i3 + 2] = 1;
+                    siz[i] = Math.random() * 1.5 + 0.5;
                 }
                 
-                // Set attributes
-                this.particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                this.particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                this.particlesGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+                geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+                geo.setAttribute('size', new THREE.BufferAttribute(siz, 1));
                 
-                // Optimized material
-                const material = new THREE.PointsMaterial({
-                    size: 0.15,
-                    vertexColors: true,
-                    transparent: true,
-                    opacity: 0.85,
-                    sizeAttenuation: true,
-                    blending: THREE.AdditiveBlending
+                const mat = new THREE.PointsMaterial({
+                    size: 0.15, vertexColors: true, transparent: true,
+                    opacity: 0.85, blending: THREE.AdditiveBlending
                 });
                 
-                // Create particle system
-                this.particleSystem = new THREE.Points(this.particlesGeometry, material);
-                this.scene.add(this.particleSystem);
+                this.particles = new THREE.Points(geo, mat);
+                this.scene.add(this.particles);
             }
             
             setupHandTracking() {
-                this.videoElement = document.getElementById('webcam');
+                const video = document.getElementById('webcam');
+                const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${f}` });
                 
-                // Initialize MediaPipe Hands with performance settings
-                this.handsModule = new Hands({
-                    locateFile: (file) => {
-                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
+                hands.setOptions({
+                    maxNumHands: 1, modelComplexity: 0,
+                    minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
+                });
+                
+                hands.onResults(r => {
+                    if(r.multiHandLandmarks?.length) {
+                        const lm = r.multiHandLandmarks[0];
+                        const dx = lm[4].x - lm[8].x;
+                        const dy = lm[4].y - lm[8].y;
+                        this.scale = 0.5 + Math.sqrt(dx*dx + dy*dy) * 5;
+                        this.hue = lm[4].x;
+                        document.getElementById('status').textContent = 'Hand detected ✓';
+                    } else {
+                        document.getElementById('status').textContent = 'Show hand to camera';
                     }
                 });
                 
-                this.handsModule.setOptions({
-                    maxNumHands: 1, // Only track one hand for performance
-                    modelComplexity: 0, // Lower complexity model
-                    minDetectionConfidence: 0.7,
-                    minTrackingConfidence: 0.7
-                });
-                
-                this.handsModule.onResults((results) => this.onHandResults(results));
-                
-                // Setup camera with reduced resolution for performance
-                const camera = new Camera(this.videoElement, {
+                new Camera(video, {
                     onFrame: async () => {
-                        await this.handsModule.send({ image: this.videoElement });
+                        try {
+                            await hands.send({ image: video });
+                        } catch(e) {
+                            console.log('Tracking error:', e);
+                        }
                     },
-                    width: 320, // Reduced resolution
-                    height: 240
-                });
-                camera.start();
+                    width: 320, height: 240
+                }).start();
             }
             
-            onHandResults(results) {
-                this.handDetected = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
-                
-                if (this.handDetected) {
-                    this.handLandmarks = results.multiHandLandmarks[0];
-                    this.updateHandControls();
-                    document.getElementById('status').textContent = 'Hand detected - Pinch to control';
-                } else {
-                    this.handLandmarks = null;
-                    document.getElementById('status').textContent = 'Show hand to camera';
-                }
-            }
-            
-            updateHandControls() {
-                if (!this.handLandmarks) return;
-                
-                // Get key landmarks
-                const thumbTip = this.handLandmarks[4];
-                const indexTip = this.handLandmarks[8];
-                const wrist = this.handLandmarks[0];
-                
-                // Calculate distance between thumb and index finger for expansion
-                const dx = thumbTip.x - indexTip.x;
-                const dy = thumbTip.y - indexTip.y;
-                this.handDistance = Math.sqrt(dx * dx + dy * dy);
-                
-                // Track hand position for color control
-                this.handPositionX = thumbTip.x;
-                
-                // Update expansion factor (0.5 to 3 range)
-                this.expansionFactor = 0.5 + (this.handDistance * 5);
-                
-                // Update color hue based on hand position
-                this.colorHue = this.handPositionX;
-                
-                // Visual feedback
-                this.updateHandOverlay(thumbTip, indexTip);
-            }
-            
-            updateHandOverlay(thumbTip, indexTip) {
-                const overlay = document.getElementById('hand-overlay');
-                overlay.innerHTML = '';
-                
-                // Create visual points for thumb and index finger
-                const thumbPoint = document.createElement('div');
-                thumbPoint.className = 'hand-point';
-                thumbPoint.style.left = `${thumbTip.x * 100}%`;
-                thumbPoint.style.top = `${thumbTip.y * 100}%`;
-                thumbPoint.style.background = 'rgba(0, 255, 0, 0.7)';
-                overlay.appendChild(thumbPoint);
-                
-                const indexPoint = document.createElement('div');
-                indexPoint.className = 'hand-point';
-                indexPoint.style.left = `${indexTip.x * 100}%`;
-                indexPoint.style.top = `${indexTip.y * 100}%`;
-                indexPoint.style.background = 'rgba(255, 0, 0, 0.7)';
-                overlay.appendChild(indexPoint);
-            }
-            
-            setupEventListeners() {
-                // Template buttons
-                document.querySelectorAll('.template-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        document.querySelectorAll('.template-btn').forEach(b => b.classList.remove('active'));
+            setupEvents() {
+                document.querySelectorAll('.btn').forEach(b => {
+                    b.addEventListener('click', e => {
+                        document.querySelectorAll('.btn').forEach(x => x.classList.remove('active'));
                         e.target.classList.add('active');
-                        this.currentTemplate = e.target.dataset.template;
+                        this.template = e.target.dataset.template;
                     });
                 });
                 
-                // Close instructions
-                document.getElementById('close-instructions').addEventListener('click', () => {
-                    document.getElementById('instructions').style.display = 'none';
+                addEventListener('resize', () => {
+                    this.camera.aspect = innerWidth/innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(innerWidth, innerHeight);
                 });
-                
-                // Window resize
-                window.addEventListener('resize', () => this.onResize());
             }
             
-            applyTemplate() {
-                const positions = this.particlesGeometry.attributes.position.array;
-                const colors = this.particlesGeometry.attributes.color.array;
-                const sizes = this.particlesGeometry.attributes.size.array;
+            updateParticles() {
+                const pos = this.particles.geometry.attributes.position.array;
+                const col = this.particles.geometry.attributes.color.array;
+                const siz = this.particles.geometry.attributes.size.array;
                 
-                for (let i = 0; i < this.particleCount; i++) {
+                for(let i = 0; i < this.particleCount; i++) {
                     const i3 = i * 3;
-                    const angle = (i / this.particleCount) * Math.PI * 2;
-                    const baseRadius = 2 * this.expansionFactor;
+                    const a = (i/this.particleCount) * Math.PI * 2;
+                    const r = 2 * (this.scale || 1);
                     
-                    switch (this.currentTemplate) {
+                    switch(this.template) {
                         case 'hearts':
-                            // Simplified heart
-                            const heartScale = 0.5 * this.expansionFactor;
-                            const x = heartScale * 16 * Math.pow(Math.sin(angle), 3);
-                            const y = heartScale * (13 * Math.cos(angle) - 5 * Math.cos(2 * angle));
-                            positions[i3] = x * 0.05;
-                            positions[i3 + 1] = y * 0.05;
-                            positions[i3 + 2] = (Math.random() - 0.5) * 0.3;
+                            const x = 0.3 * 16 * Math.pow(Math.sin(a), 3);
+                            const y = 0.3 * (13*Math.cos(a) - 5*Math.cos(2*a));
+                            pos[i3] = x * 0.05; pos[i3+1] = y * 0.05; pos[i3+2] = 0;
                             break;
-                            
                         case 'stars':
-                            // Star pattern
-                            const points = 5;
-                            const starAngle = (i / this.particleCount) * Math.PI * 2;
-                            const radiusStar = (i % 2 === 0) ? baseRadius : baseRadius * 0.4;
-                            
-                            positions[i3] = Math.cos(starAngle) * radiusStar * 0.3;
-                            positions[i3 + 1] = Math.sin(starAngle) * radiusStar * 0.3;
-                            positions[i3 + 2] = (Math.random() - 0.5) * 0.2;
+                            const rad = i%2 ? r*0.4 : r;
+                            pos[i3] = Math.cos(a) * rad * 0.3;
+                            pos[i3+1] = Math.sin(a) * rad * 0.3;
+                            pos[i3+2] = 0;
                             break;
-                            
-                        case 'spiral':
-                            // Simple spiral
-                            const spiralRadius = angle * 0.05 * this.expansionFactor;
-                            positions[i3] = Math.cos(angle) * spiralRadius;
-                            positions[i3 + 1] = Math.sin(angle) * spiralRadius;
-                            positions[i3 + 2] = (angle * 0.01 * this.expansionFactor) - 1;
-                            break;
-                            
-                        case 'fireworks':
-                            // Radial pattern
-                            const fireworkAngle = Math.random() * Math.PI * 2;
-                            const fireworkRadius = Math.random() * baseRadius;
-                            positions[i3] = Math.cos(fireworkAngle) * fireworkRadius;
-                            positions[i3 + 1] = Math.sin(fireworkAngle) * fireworkRadius;
-                            positions[i3 + 2] = (Math.random() - 0.5) * 0.5;
-                            break;
-                            
                         default:
-                            // Sphere distribution
-                            const theta = (i / this.particleCount) * Math.PI * 2;
-                            const phi = Math.acos(1 - 2 * (i / this.particleCount));
-                            positions[i3] = baseRadius * Math.sin(phi) * Math.cos(theta);
-                            positions[i3 + 1] = baseRadius * Math.sin(phi) * Math.sin(theta);
-                            positions[i3 + 2] = baseRadius * Math.cos(phi);
+                            const t = (i/this.particleCount) * Math.PI * 2;
+                            const p = Math.acos(1 - 2*(i/this.particleCount));
+                            pos[i3] = r * Math.sin(p) * Math.cos(t);
+                            pos[i3+1] = r * Math.sin(p) * Math.sin(t);
+                            pos[i3+2] = r * Math.cos(p);
                     }
                     
-                    // Update colors based on hand position
-                    const hue = (this.colorHue + (i / this.particleCount) * 0.2) % 1;
-                    const rgb = this.hslToRgb(hue, 0.8, 0.6);
-                    colors[i3] = rgb[0];
-                    colors[i3 + 1] = rgb[1];
-                    colors[i3 + 2] = rgb[2];
-                    
-                    // Update sizes with expansion factor
-                    sizes[i] = (Math.random() * 1.5 + 0.5) * this.expansionFactor;
+                    const h = ((this.hue || 0) + i/this.particleCount*0.2) % 1;
+                    const rgb = this.hslToRgb(h, 0.8, 0.6);
+                    col[i3] = rgb[0]; col[i3+1] = rgb[1]; col[i3+2] = rgb[2];
+                    siz[i] = (Math.random()*1.5 + 0.5) * (this.scale || 1);
                 }
                 
-                this.particlesGeometry.attributes.position.needsUpdate = true;
-                this.particlesGeometry.attributes.color.needsUpdate = true;
-                this.particlesGeometry.attributes.size.needsUpdate = true;
+                this.particles.geometry.attributes.position.needsUpdate = true;
+                this.particles.geometry.attributes.color.needsUpdate = true;
+                this.particles.geometry.attributes.size.needsUpdate = true;
             }
             
             hslToRgb(h, s, l) {
                 let r, g, b;
-                
-                if (s === 0) {
-                    r = g = b = l;
-                } else {
-                    const hue2rgb = (p, q, t) => {
-                        if (t < 0) t += 1;
-                        if (t > 1) t -= 1;
-                        if (t < 1/6) return p + (q - p) * 6 * t;
-                        if (t < 1/2) return q;
-                        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-                        return p;
-                    };
-                    
-                    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-                    const p = 2 * l - q;
-                    r = hue2rgb(p, q, h + 1/3);
-                    g = hue2rgb(p, q, h);
-                    b = hue2rgb(p, q, h - 1/3);
-                }
-                
-                return [r, g, b];
-            }
-            
-            updatePerformance() {
-                this.frameCount++;
-                const now = performance.now();
-                
-                if (now >= this.lastFpsUpdate + 1000) {
-                    this.fps = (this.frameCount * 1000) / (now - this.lastFpsUpdate);
-                    this.frameCount = 0;
-                    this.lastFpsUpdate = now;
-                    document.getElementById('status').textContent = `FPS: ${Math.round(this.fps)} | ${this.handDetected ? 'Hand: ✓' : 'Hand: ✗'}`;
-                }
+                if(s === 0) return [l, l, l];
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                const hue2rgb = (p, q, t) => {
+                    if(t < 0) t += 1; if(t > 1) t -= 1;
+                    if(t < 1/6) return p + (q - p) * 6 * t;
+                    if(t < 1/2) return q; if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                return [hue2rgb(p, q, h + 1/3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1/3)];
             }
             
             animate() {
-                const currentTime = performance.now();
-                
-                // Maintain 30fps target
-                if (currentTime - this.lastFrameTime >= this.frameTime) {
-                    this.lastFrameTime = currentTime;
-                    
-                    // Apply current template
-                    this.applyTemplate();
-                    
-                    // Auto-rotation when no hand detected
-                    if (!this.handDetected) {
-                        this.particleSystem.rotation.y += 0.005;
-                        this.particleSystem.rotation.x += 0.002;
-                    }
-                    
-                    // Camera subtle movement
-                    const time = this.clock.getElapsedTime();
-                    this.camera.position.z = 8 + Math.sin(time * 0.3) * 0.3;
-                    this.camera.lookAt(this.scene.position);
-                    
-                    // Performance monitoring
-                    this.updatePerformance();
-                    
-                    this.renderer.render(this.scene, this.camera);
-                }
-                
                 requestAnimationFrame(() => this.animate());
-            }
-            
-            onResize() {
-                this.camera.aspect = window.innerWidth / window.innerHeight;
-                this.camera.updateProjectionMatrix();
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-            }
-            
-            hideLoading() {
-                document.getElementById('loading').style.display = 'none';
-            }
-            
-            showInstructions() {
-                // Instructions are already in HTML
+                this.updateParticles();
+                if(!this.scale) {
+                    this.particles.rotation.y += 0.005;
+                    this.particles.rotation.x += 0.002;
+                }
+                this.camera.position.z = 8 + Math.sin(Date.now()*0.0003) * 0.3;
+                this.camera.lookAt(this.scene.position);
+                this.renderer.render(this.scene, this.camera);
             }
         }
-        
-        // Initialize when page loads
-        window.addEventListener('load', () => {
-            const particleSystem = new HandTrackingParticleSystem();
-            particleSystem.animate();
-            
-            // Simulate loading progress
-            let progress = 0;
-            const loadingInterval = setInterval(() => {
-                progress += Math.random() * 20;
-                if (progress >= 100) {
-                    progress = 100;
-                    clearInterval(loadingInterval);
-                }
-                document.getElementById('loading-progress').style.width = progress + '%';
-            }, 100);
-        });
+
+        // Enhanced loading with progress simulation
+        let progress = 0;
+        const loadingInterval = setInterval(() => {
+            progress += Math.random() * 10;
+            if(progress >= 100) {
+                progress = 100;
+                clearInterval(loadingInterval);
+                setTimeout(() => {
+                    document.getElementById('loading').style.display = 'none';
+                    new HandParticleApp();
+                }, 500);
+            }
+            document.getElementById('loading-bar').style.width = progress + '%';
+            document.getElementById('loading-status').textContent = 
+                progress < 30 ? 'Loading libraries...' :
+                progress < 60 ? 'Downloading AI model...' :
+                progress < 90 ? 'Initializing camera...' : 'Almost ready...';
+        }, 200);
     </script>
 </body>
 </html>
