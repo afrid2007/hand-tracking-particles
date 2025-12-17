@@ -74,6 +74,13 @@
                 this.scale = 1;
                 this.hue = 0;
                 
+                // Wait for MediaPipe to load
+                if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
+                    document.getElementById('loading-text').innerHTML = 
+                        '<h2>Error</h2><p>MediaPipe failed to load</p><p>Refresh page to retry</p>';
+                    return;
+                }
+                
                 // Setup all components
                 this.setupScene();
                 this.setupParticles();
@@ -203,21 +210,26 @@
                     }
                 });
                 
-                // Setup camera
-                const camera = new Camera(video, {
-                    onFrame: async () => {
-                        try {
-                            await hands.send({ image: video });
-                        } catch(error) {
-                            console.error('Hand tracking error:', error);
-                        }
-                    },
-                    width: 320,    // Reduced resolution for performance
-                    height: 240
-                });
-                
-                // Start camera
-                camera.start();
+                // Setup camera with error handling
+                try {
+                    const camera = new Camera(video, {
+                        onFrame: async () => {
+                            try {
+                                await hands.send({ image: video });
+                            } catch(error) {
+                                console.error('Hand tracking frame error:', error);
+                            }
+                        },
+                        width: 320,    // Reduced resolution for performance
+                        height: 240
+                    });
+                    
+                    // Start camera
+                    camera.start();
+                } catch(error) {
+                    console.error('Camera setup error:', error);
+                    document.getElementById('status').textContent = 'Camera error - check permissions';
+                }
             }
             
             setupEvents() {
@@ -384,7 +396,7 @@
                     } catch(error) {
                         console.error('Failed to initialize app:', error);
                         document.getElementById('loading-text').innerHTML = 
-                            '<h2>Error Loading</h2><p>Check console for details</p>';
+                            '<h2>Error Loading</h2><p>Check console for details</p><p>Refresh to retry</p>';
                     }
                 }, 500);
             }
@@ -394,6 +406,14 @@
                 progress < 60 ? 'Downloading AI model...' :
                 progress < 90 ? 'Initializing camera...' : 'Almost ready...';
         }, 200);
+        
+        // Fallback in case libraries don't load
+        setTimeout(() => {
+            if (typeof Hands === 'undefined') {
+                document.getElementById('loading-text').innerHTML = 
+                    '<h2>Network Error</h2><p>Failed to load MediaPipe</p><p>Check connection & refresh</p>';
+            }
+        }, 15000); // 15 second timeout
     </script>
 </body>
 </html>
