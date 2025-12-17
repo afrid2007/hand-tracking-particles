@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Real Hand Tracking Particles</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/handtrackjs@0.0.16/dist/handtrack.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body { overflow: hidden; background: #000; font-family: Arial, sans-serif; }
@@ -45,6 +44,9 @@
         #instructions p { margin: 8px 0; font-size: 14px; line-height: 1.4; }
         #close-instructions { background: #00ff00; color: black; border: none; padding: 10px 20px;
                              border-radius: 20px; margin-top: 15px; font-weight: bold; cursor: pointer; }
+        
+        #retry-btn { background: #00ff00; color: black; border: none; padding: 10px 20px;
+                    border-radius: 20px; margin-top: 15px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -70,8 +72,7 @@
     <div id="instructions">
         <h3>Real Hand Tracking Particles</h3>
         <p>• Show your hand to camera</p>
-        <p>• Pinch thumb & index finger to resize</p>
-        <p>• Move hand to control particle colors</p>
+        <p>• Move hand to control particles</p>
         <p>• Use buttons below to change templates</p>
         <button id="close-instructions">START</button>
     </div>
@@ -85,6 +86,23 @@
     </div>
 
     <script>
+        // Load HandTrack.js manually with error handling
+        function loadHandTrack(callback) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/handtrackjs@0.0.16/dist/handtrack.min.js';
+            script.onload = () => {
+                if (typeof handTrack !== 'undefined') {
+                    callback(null, handTrack);
+                } else {
+                    callback(new Error('HandTrack.js loaded but not available'));
+                }
+            };
+            script.onerror = () => {
+                callback(new Error('Failed to load HandTrack.js'));
+            };
+            document.head.appendChild(script);
+        }
+
         class RealHandTrackingParticles {
             constructor() {
                 this.video = document.getElementById('video-feed');
@@ -106,7 +124,7 @@
                 document.getElementById('overlay').appendChild(this.renderer.domElement);
                 
                 // Particle system
-                this.particleCount = 600;
+                this.particleCount = 500;
                 this.currentTemplate = 'default';
                 this.scale = 1;
                 this.hue = 0;
@@ -117,19 +135,48 @@
                 this.handDetected = false;
                 this.handX = 0.5;
                 this.handY = 0.5;
-                this.pinchDistance = 1;
                 
                 // Setup
                 this.setupParticles();
                 this.setupEventListeners();
                 
                 // Start loading process
-                this.loadHandTrackingModel();
+                this.loadLibraries();
+            }
+            
+            loadLibraries() {
+                document.getElementById('loading-status').textContent = 'Loading HandTrack.js...';
+                
+                loadHandTrack((error, handTrackLib) => {
+                    if (error) {
+                        console.error('HandTrack.js error:', error);
+                        this.showLibraryError();
+                        return;
+                    }
+                    
+                    window.handTrack = handTrackLib;
+                    document.getElementById('loading-status').textContent = 'HandTrack.js loaded, starting camera...';
+                    this.loadHandTrackingModel();
+                });
+            }
+            
+            showLibraryError() {
+                document.getElementById('loading-text').innerHTML = `
+                    <h2>Library Load Failed</h2>
+                    <p>Could not load HandTrack.js</p>
+                    <p>Using fallback touch controls</p>
+                    <button id="retry-btn">Use Touch Controls</button>
+                `;
+                
+                document.getElementById('retry-btn').addEventListener('click', () => {
+                    this.setupTouchControls();
+                    this.hideLoading();
+                });
             }
             
             async loadHandTrackingModel() {
                 try {
-                    document.getElementById('loading-status').textContent = 'Loading HandTrack.js model...';
+                    document.getElementById('loading-status').textContent = 'Loading AI model...';
                     
                     // HandTrack.js model options
                     const modelParams = {
@@ -151,9 +198,14 @@
                     document.getElementById('loading-text').innerHTML = `
                         <h2>Model Load Failed</h2>
                         <p>${error.message}</p>
-                        <p>Check console for details</p>
-                        <button onclick="location.reload()" style="background:#00ff00;color:black;border:none;padding:10px 20px;border-radius:20px;margin-top:15px;cursor:pointer;">RETRY</button>
+                        <p>Using fallback touch controls</p>
+                        <button id="retry-btn">Use Touch Controls</button>
                     `;
+                    
+                    document.getElementById('retry-btn').addEventListener('click', () => {
+                        this.setupTouchControls();
+                        this.hideLoading();
+                    });
                 }
             }
             
@@ -184,9 +236,14 @@
                     console.error('Camera error:', error);
                     document.getElementById('loading-text').innerHTML = `
                         <h2>Camera Access Denied</h2>
-                        <p>Please enable camera permissions</p>
-                        <button onclick="location.reload()" style="background:#00ff00;color:black;border:none;padding:10px 20px;border-radius:20px;margin-top:15px;cursor:pointer;">REFRESH</button>
+                        <p>Using fallback touch controls</p>
+                        <button id="retry-btn">Use Touch Controls</button>
                     `;
+                    
+                    document.getElementById('retry-btn').addEventListener('click', () => {
+                        this.setupTouchControls();
+                        this.hideLoading();
+                    });
                 }
             }
             
@@ -215,10 +272,8 @@
                     this.handX = (hand.bbox[0] + hand.bbox[2] / 2) / this.video.videoWidth;
                     this.handY = (hand.bbox[1] + hand.bbox[3] / 2) / this.video.videoHeight;
                     
-                    // Simulate pinch based on hand size
-                    const handSize = Math.max(hand.bbox[2], hand.bbox[3]);
-                    this.pinchDistance = Math.max(0.3, Math.min(3, handSize / 100));
-                    this.scale = this.pinchDistance;
+                    // Scale based on hand position
+                    this.scale = 0.5 + this.handY * 2;
                     
                     // Color based on hand position
                     this.hue = this.handX;
@@ -251,6 +306,74 @@
                 this.ctx.fill();
             }
             
+            setupTouchControls() {
+                // Remove hand tracking elements
+                document.getElementById('video-container').style.display = 'none';
+                
+                // Setup touch controls
+                let isDragging = false;
+                let lastX = 0, lastY = 0;
+                
+                const canvas = this.renderer.domElement;
+                
+                canvas.addEventListener('touchstart', (e) => {
+                    isDragging = true;
+                    lastX = e.touches[0].clientX;
+                    lastY = e.touches[0].clientY;
+                    this.autoRotate = false;
+                    e.preventDefault();
+                });
+                
+                canvas.addEventListener('touchmove', (e) => {
+                    if (isDragging) {
+                        const deltaX = e.touches[0].clientX - lastX;
+                        const deltaY = e.touches[0].clientY - lastY;
+                        
+                        this.handX = (e.touches[0].clientX / window.innerWidth);
+                        this.handY = (e.touches[0].clientY / window.innerHeight);
+                        this.scale = 0.5 + this.handY * 2;
+                        this.hue = this.handX;
+                        
+                        lastX = e.touches[0].clientX;
+                        lastY = e.touches[0].clientY;
+                    }
+                    e.preventDefault();
+                });
+                
+                canvas.addEventListener('touchend', () => {
+                    isDragging = false;
+                });
+                
+                // Double tap for color explosion
+                let lastTap = 0;
+                canvas.addEventListener('touchend', (e) => {
+                    const currentTime = new Date().getTime();
+                    const tapLength = currentTime - lastTap;
+                    if (tapLength < 300 && tapLength > 0) {
+                        this.explodeColors();
+                        e.preventDefault();
+                    }
+                    lastTap = currentTime;
+                });
+                
+                document.getElementById('status').textContent = 'Touch screen to control particles';
+            }
+            
+            explodeColors() {
+                const colors = this.geometry.attributes.color.array;
+                for(let i = 0; i < this.particleCount; i++) {
+                    const i3 = i * 3;
+                    const hue = Math.random();
+                    const [r, g, b] = this.hslToRgb(hue, 0.9, 0.6);
+                    colors[i3] = r; colors[i3 + 1] = g; colors[i3 + 2] = b;
+                }
+                this.geometry.attributes.color.needsUpdate = true;
+                document.getElementById('status').textContent = 'Color explosion!';
+                setTimeout(() => {
+                    document.getElementById('status').textContent = 'Touch screen to control';
+                }, 2000);
+            }
+            
             setupParticles() {
                 const geometry = new THREE.BufferGeometry();
                 const positions = new Float32Array(this.particleCount * 3);
@@ -273,7 +396,7 @@
                 geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
                 
                 const material = new THREE.PointsMaterial({
-                    size: 0.12,
+                    size: 0.15,
                     vertexColors: true,
                     transparent: true,
                     opacity: 0.8,
