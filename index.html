@@ -240,12 +240,37 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r180/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.4/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.4/drawing_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js"></script>
+    <script async src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r180/three.min.js"></script>
+    <script async src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.4/camera_utils.js"></script>
+    <script async src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.4/drawing_utils.js"></script>
+    <script async src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js"></script>
 
     <script>
+        // ============================================================================
+        // WAIT FOR EXTERNAL SCRIPTS TO LOAD
+        // ============================================================================
+        function waitForScripts() {
+            return new Promise((resolve) => {
+                let attempts = 0;
+                const maxAttempts = 100;
+
+                const checkReady = () => {
+                    if (typeof THREE !== 'undefined' && typeof Hands !== 'undefined' && typeof Camera !== 'undefined') {
+                        console.log('[Scripts] All external scripts loaded');
+                        resolve(true);
+                    } else if (attempts < maxAttempts) {
+                        attempts++;
+                        setTimeout(checkReady, 50);
+                    } else {
+                        console.error('[Scripts] Timeout waiting for external libraries');
+                        resolve(false);
+                    }
+                };
+
+                checkReady();
+            });
+        }
+
         // ============================================================================
         // CONFIGURATION & CONSTANTS
         // ============================================================================
@@ -962,7 +987,14 @@
 
         document.getElementById('camera-btn').addEventListener('click', startCamera);
 
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
+            const scriptsReady = await waitForScripts();
+            
+            if (!scriptsReady) {
+                showError('Failed to load required libraries. Please reload the page.');
+                return;
+            }
+
             initThreeJS();
             initParticles();
             animate();
