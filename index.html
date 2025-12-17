@@ -3,49 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Realtime Hand-Controlled 3D Particles</title>
+  <title>Robust Realtime Hand‑Controlled 3D Particles</title>
 
   <!-- THREE -->
   <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
 
-  <!-- MEDIAPIPE (LOCKED VERSIONS – MOBILE SAFE) -->
+  <!-- MEDIAPIPE (STABLE MOBILE VERSIONS) -->
   <script src="https://unpkg.com/@mediapipe/hands@0.4/hands.js"></script>
   <script src="https://unpkg.com/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
 
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: black;
-      touch-action: none;
-    }
-    canvas { display: block; }
+    html, body { margin:0; padding:0; overflow:hidden; background:black; }
+    canvas { display:block; }
     #ui {
-      position: fixed;
-      top: 0;
-      width: 100%;
-      text-align: center;
-      color: #ccc;
-      font-family: monospace;
-      font-size: 13px;
-      padding: 8px;
-      background: rgba(0,0,0,0.4);
-      z-index: 10;
+      position:fixed; top:0; width:100%; z-index:10;
+      background:rgba(0,0,0,.5); color:#ccc; font-family:monospace;
+      text-align:center; padding:8px;
     }
-    #startBtn {
-      margin-top: 6px;
-      padding: 8px 16px;
-      background: #111;
-      border: 1px solid #555;
-      color: #fff;
-      font-size: 14px;
-    }
+    #startBtn { padding:8px 16px; margin-top:6px; }
   </style>
 </head>
 <body>
 <div id="ui">
-  Camera permission required<br>
+  Tap start, allow camera, then show your hand<br>
   <button id="startBtn">START CAMERA</button>
 </div>
 
@@ -53,18 +33,18 @@
 
 <script>
 /*********************
- * THREE.JS
+ * THREE
  *********************/
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.1, 1000);
 camera.position.z = 70;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-window.addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
+window.addEventListener('resize',()=>{
+  camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
@@ -72,132 +52,130 @@ window.addEventListener('resize', () => {
 /*********************
  * PARTICLES
  *********************/
-const COUNT = 10000;
+const COUNT = 9000;
 const geometry = new THREE.BufferGeometry();
-const positions = new Float32Array(COUNT * 3);
-const colors = new Float32Array(COUNT * 3);
+const positions = new Float32Array(COUNT*3);
+const colors = new Float32Array(COUNT*3);
 
 const shapes = ['heart','flower','saturn','firework'];
 let shapeIndex = 0;
 
-function buildShape(type) {
-  for (let i = 0; i < COUNT; i++) {
+function buildShape(type){
+  for(let i=0;i<COUNT;i++){
     let x=0,y=0,z=0;
-    const t = Math.random() * Math.PI * 2;
+    const t=Math.random()*Math.PI*2;
 
-    if (type === 'heart') {
-      x = 16 * Math.pow(Math.sin(t), 3);
-      y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-      z = (Math.random()-0.5)*10;
-    } else if (type === 'flower') {
-      const r = Math.sin(5*t)*12;
-      x = Math.cos(t)*r;
-      y = Math.sin(t)*r;
-      z = (Math.random()-0.5)*10;
-    } else if (type === 'saturn') {
-      const r = 14 + Math.random()*4;
-      x = Math.cos(t)*r;
-      y = (Math.random()-0.5)*2;
-      z = Math.sin(t)*r;
+    if(type==='heart'){
+      x=16*Math.pow(Math.sin(t),3);
+      y=13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);
+      z=(Math.random()-.5)*10;
+    } else if(type==='flower'){
+      const r=Math.sin(5*t)*12;
+      x=Math.cos(t)*r; y=Math.sin(t)*r; z=(Math.random()-.5)*10;
+    } else if(type==='saturn'){
+      const r=14+Math.random()*4;
+      x=Math.cos(t)*r; y=(Math.random()-.5)*2; z=Math.sin(t)*r;
     } else {
-      const a = Math.random()*Math.PI*2;
-      const b = Math.random()*Math.PI;
-      const r = Math.random()*15;
-      x = r*Math.sin(b)*Math.cos(a);
-      y = r*Math.sin(b)*Math.sin(a);
-      z = r*Math.cos(b);
+      const a=Math.random()*Math.PI*2;
+      const b=Math.random()*Math.PI;
+      const r=Math.random()*15;
+      x=r*Math.sin(b)*Math.cos(a);
+      y=r*Math.sin(b)*Math.sin(a);
+      z=r*Math.cos(b);
     }
 
-    positions[i*3] = x;
-    positions[i*3+1] = y;
-    positions[i*3+2] = z;
-
-    const c = new THREE.Color().setHSL(i/COUNT,1,0.6);
-    colors[i*3] = c.r;
-    colors[i*3+1] = c.g;
-    colors[i*3+2] = c.b;
+    positions[i*3]=x; positions[i*3+1]=y; positions[i*3+2]=z;
+    const c=new THREE.Color().setHSL(i/COUNT,1,.6);
+    colors[i*3]=c.r; colors[i*3+1]=c.g; colors[i*3+2]=c.b;
   }
-
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions,3));
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors,3));
+  geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
 }
 
 buildShape(shapes[shapeIndex]);
 
-const material = new THREE.PointsMaterial({
-  size: 0.4,
-  vertexColors: true
-});
-
-const points = new THREE.Points(geometry, material);
+const material=new THREE.PointsMaterial({ size:.4, vertexColors:true });
+const points=new THREE.Points(geometry,material);
 scene.add(points);
+
+/*********************
+ * HAND STATE (IMPORTANT FIX)
+ *********************/
+let handVisible=false;
+let handLostFrames=0;
+let lastPinch=false;
+let smoothX=0, smoothY=0, smoothScale=1;
 
 /*********************
  * MEDIAPIPE
  *********************/
-const video = document.getElementById('video');
-const startBtn = document.getElementById('startBtn');
-const ui = document.getElementById('ui');
+const video=document.getElementById('video');
+const startBtn=document.getElementById('startBtn');
+const ui=document.getElementById('ui');
 
-let lastPinch = false;
-
-const hands = new Hands({
-  locateFile: f => `https://unpkg.com/@mediapipe/hands@0.4/${f}`
-});
+const hands=new Hands({ locateFile:f=>`https://unpkg.com/@mediapipe/hands@0.4/${f}` });
 
 hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 0,
-  minDetectionConfidence: 0.7,
-  minTrackingConfidence: 0.7
+  maxNumHands:1,
+  modelComplexity:0,
+  minDetectionConfidence:0.6,
+  minTrackingConfidence:0.6
 });
 
-hands.onResults(res => {
-  if (!res.multiHandLandmarks) return;
-  const lm = res.multiHandLandmarks[0];
+hands.onResults(res=>{
+  if(!res.multiHandLandmarks || res.multiHandLandmarks.length===0){
+    handLostFrames++;
+    if(handLostFrames>10){ handVisible=false; lastPinch=false; }
+    return;
+  }
 
-  const index = lm[8];
-  const thumb = lm[4];
+  handLostFrames=0;
+  handVisible=true;
 
-  const dx = index.x - thumb.x;
-  const dy = index.y - thumb.y;
-  const pinch = Math.sqrt(dx*dx + dy*dy);
+  const lm=res.multiHandLandmarks[0];
+  const index=lm[8];
+  const thumb=lm[4];
 
-  points.rotation.y = (index.x-0.5)*Math.PI*2;
-  points.rotation.x = (index.y-0.5)*Math.PI*2;
+  const dx=index.x-thumb.x;
+  const dy=index.y-thumb.y;
+  const pinch=Math.sqrt(dx*dx+dy*dy);
 
-  const s = THREE.MathUtils.clamp(1.5 - pinch*6, 0.6, 2.2);
-  points.scale.set(s,s,s);
+  // smoothing (CRITICAL)
+  smoothX+=((index.x-.5)*Math.PI*2-smoothX)*0.15;
+  smoothY+=((index.y-.5)*Math.PI*2-smoothY)*0.15;
+  smoothScale+=((1.5-pinch*6)-smoothScale)*0.15;
 
-  const isPinching = pinch < 0.045;
-  if (isPinching && !lastPinch) {
-    shapeIndex = (shapeIndex+1)%shapes.length;
+  points.rotation.y=smoothX;
+  points.rotation.x=smoothY;
+  points.scale.setScalar(THREE.MathUtils.clamp(smoothScale,.6,2.2));
+
+  const isPinching=pinch<0.045;
+  if(isPinching && !lastPinch){
+    shapeIndex=(shapeIndex+1)%shapes.length;
     buildShape(shapes[shapeIndex]);
   }
-  lastPinch = isPinching;
+  lastPinch=isPinching;
 });
 
-startBtn.onclick = async () => {
-  ui.style.display = 'none';
-
-  const cam = new Camera(video, {
-    onFrame: async () => {
-      await hands.send({ image: video });
-    },
-    width: 640,
-    height: 480
+startBtn.onclick=()=>{
+  ui.style.display='none';
+  const cam=new Camera(video,{
+    onFrame:async()=>{ await hands.send({image:video}); },
+    width:640, height:480
   });
-
   cam.start();
 };
 
 /*********************
  * LOOP
  *********************/
-function animate() {
+function animate(){
   requestAnimationFrame(animate);
-  points.rotation.z += 0.001;
-  renderer.render(scene, camera);
+
+  // graceful idle animation when hand disappears
+  if(!handVisible){ points.rotation.y+=0.002; points.rotation.x+=0.001; }
+
+  renderer.render(scene,camera);
 }
 animate();
 </script>
