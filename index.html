@@ -9,7 +9,7 @@
         body { background: #000; font-family: Arial, sans-serif; }
         #container { position: relative; width: 100vw; height: 100vh; }
         canvas { display: block; }
-        #video { position: absolute; top: 10px; right: 10px; width: 160px; height: 120px; border: 2px solid #fff; border-radius: 8px; z-index: 10; }
+        #video { position: absolute; top: 10px; right: 10px; width: 160px; height: 120px; border: 2px solid #fff; border-radius: 8px; z-index: 10; transform: scaleX(-1); }
         #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 10; flex-wrap: wrap; justify-content: center; max-width: 90%; }
         .btn { background: rgba(255,255,255,0.2); border: 2px solid #fff; color: #fff; padding: 12px 20px; border-radius: 25px; cursor: pointer; font-size: 14px; backdrop-filter: blur(10px); transition: all 0.3s; }
         .btn:active { transform: scale(0.95); background: rgba(255,255,255,0.3); }
